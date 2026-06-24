@@ -16,9 +16,9 @@ let cachedBootstrap: string | null | undefined;
 export default function superpowersPiExtension(pi: ExtensionAPI) {
 	let injectBootstrap = true;
 
-	pi.on("resources_discover", async () => ({
-		skillPaths: [skillsDir],
-	}));
+	// Skills are registered via package.json `pi.skills` ("./skills"). Do not also
+	// declare them here through resources_discover — that registers the same dir twice
+	// and pi logs every skill as a duplicate skip at startup. See petebytes/superpowers.
 
 	pi.on("session_start", async () => {
 		injectBootstrap = true;
