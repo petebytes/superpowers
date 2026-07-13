@@ -96,6 +96,34 @@ before execution begins, not one interrupt per discovery mid-plan. If the
 scan is clean, proceed without comment. The review loop remains the net for
 conflicts that only emerge from implementation.
 
+## Task Complexity Gate
+
+Scale the review machinery to the task, not the reverse. Applying the full
+implementer + task-review + fix loop to a fully-specified 5-line file burns
+6-7 cold-start agents to catch style nits a reviewer will always manufacture
+on trivial diffs — observed at 10-15x the cost of the work itself. Classify
+each task from the plan text before dispatching:
+
+- **mechanical** — the brief gives the exact contents or a complete,
+  decision-free spec, 1-2 files (create-this-file-verbatim, a config value,
+  a mechanical rename). Dispatch a cheap implementer as normal. If it returns
+  **DONE** (clean self-review, no concerns), skip the per-task review loop and
+  mark the task complete. Do NOT skip it on DONE_WITH_CONCERNS, BLOCKED, or
+  NEEDS_CONTEXT — those get the full review. The final whole-branch review
+  still reads these commits, so nothing ships unreviewed; you are only
+  dropping the redundant per-task gate on diffs that carry no judgment.
+- **integration** — multiple files, cross-cutting interfaces, or judgment
+  about how pieces fit. Full per-task loop.
+- **design** — ambiguous requirements or architecture tradeoffs. Full
+  per-task loop; be ready to escalate to the human or a more capable model.
+
+Classify from evidence, not optimism: if you cannot point to the exact
+contents or a complete spec in the brief, it is not mechanical. When unsure,
+default up to integration — a redundant review is cheaper than an unreviewed
+judgment call. Record the class in the task's ledger line
+(`Task N: mechanical, complete ...`) so a post-compaction resume does not
+re-litigate the call.
+
 ## Model Selection
 
 Use the least powerful model that can handle each role to conserve cost and increase speed.
@@ -133,7 +161,7 @@ that implementer. Single-file mechanical fixes also take the cheapest tier.
 
 Implementer subagents report one of four statuses. Handle each appropriately:
 
-**DONE:** Generate the review package (`scripts/review-package BASE HEAD`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
+**DONE:** For a mechanical-class task (see Task Complexity Gate), mark it complete without a per-task review — the final whole-branch review still covers its commits. For integration- and design-class tasks, generate the review package (`scripts/review-package BASE HEAD`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
 
 **DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
 
@@ -368,7 +396,7 @@ Done!
 
 **Never:**
 - Start implementation on main/master branch without explicit user consent
-- Skip task review, or accept a report missing either verdict (spec compliance AND task quality are both required)
+- Skip task review on an integration- or design-class task, or accept a report missing either verdict (spec compliance AND task quality are both required). The only sanctioned skip is a mechanical-class task returned as clean DONE (see Task Complexity Gate) — and only because the final whole-branch review still covers its commits
 - Proceed with unfixed issues
 - Dispatch multiple implementation subagents in parallel (conflicts)
 - Make a subagent read the whole plan file (hand it its task brief —
