@@ -42,6 +42,15 @@ digraph when_to_use {
 - Review after each task (spec compliance + code quality), broad review at the end
 - Faster iteration (no human-in-loop between tasks)
 
+**What SDD does NOT buy you: parallel throughput.** Implementers are
+dispatched one at a time — running two against the same tree corrupts each
+other's writes, so the Red Flags forbid it. Tasks therefore serialize, and
+wall-clock is roughly the sum of per-task times, not a multi-agent speedup.
+The win over manual execution is context isolation (each task gets a clean,
+curated window) and the automatic review gates — not concurrency. Choose SDD
+for those, and do not expect research-style breadth-first parallelism from a
+coding plan whose tasks share types, call sites, and integration points.
+
 ## The Process
 
 ```dot
