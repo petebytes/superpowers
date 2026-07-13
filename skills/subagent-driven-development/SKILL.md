@@ -96,6 +96,34 @@ before execution begins, not one interrupt per discovery mid-plan. If the
 scan is clean, proceed without comment. The review loop remains the net for
 conflicts that only emerge from implementation.
 
+## Task Complexity Gate
+
+Scale the review machinery to the task, not the reverse. Applying the full
+implementer + task-review + fix loop to a fully-specified 5-line file burns
+6-7 cold-start agents to catch style nits a reviewer will always manufacture
+on trivial diffs — observed at 10-15x the cost of the work itself. Classify
+each task from the plan text before dispatching:
+
+- **mechanical** — the brief gives the exact contents or a complete,
+  decision-free spec, 1-2 files (create-this-file-verbatim, a config value,
+  a mechanical rename). Dispatch a cheap implementer as normal. If it returns
+  **DONE** (clean self-review, no concerns), skip the per-task review loop and
+  mark the task complete. Do NOT skip it on DONE_WITH_CONCERNS, BLOCKED, or
+  NEEDS_CONTEXT — those get the full review. The final whole-branch review
+  still reads these commits, so nothing ships unreviewed; you are only
+  dropping the redundant per-task gate on diffs that carry no judgment.
+- **integration** — multiple files, cross-cutting interfaces, or judgment
+  about how pieces fit. Full per-task loop.
+- **design** — ambiguous requirements or architecture tradeoffs. Full
+  per-task loop; be ready to escalate to the human or a more capable model.
+
+Classify from evidence, not optimism: if you cannot point to the exact
+contents or a complete spec in the brief, it is not mechanical. When unsure,
+default up to integration — a redundant review is cheaper than an unreviewed
+judgment call. Record the class in the task's ledger line
+(`Task N: mechanical, complete ...`) so a post-compaction resume does not
+re-litigate the call.
+
 ## Model Selection
 
 Use the least powerful model that can handle each role to conserve cost and increase speed.
@@ -133,7 +161,7 @@ that implementer. Single-file mechanical fixes also take the cheapest tier.
 
 Implementer subagents report one of four statuses. Handle each appropriately:
 
-**DONE:** Generate the review package (`scripts/review-package BASE HEAD`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
+**DONE:** For a mechanical-class task (see Task Complexity Gate), mark it complete without a per-task review — the final whole-branch review still covers its commits. For integration- and design-class tasks, generate the review package (`scripts/review-package BASE HEAD`, from this skill's directory — it prints the unique file path it wrote; BASE is the commit you recorded before dispatching the implementer — never `HEAD~1`, which silently drops all but the last commit of a multi-commit task), then dispatch the task reviewer with the printed path.
 
 **DONE_WITH_CONCERNS:** The implementer completed the work but flagged doubts. Read the concerns before proceeding. If the concerns are about correctness or scope, address them before review. If they're observations (e.g., "this file is getting large"), note them and proceed to review.
 
@@ -368,7 +396,7 @@ Done!
 
 **Never:**
 - Start implementation on main/master branch without explicit user consent
-- Skip task review, or accept a report missing either verdict (spec compliance AND task quality are both required)
+- Skip task review on an integration- or design-class task, or accept a report missing either verdict (spec compliance AND task quality are both required). The only sanctioned skip is a mechanical-class task returned as clean DONE (see Task Complexity Gate) — and only because the final whole-branch review still covers its commits
 - Proceed with unfixed issues
 - Dispatch multiple implementation subagents in parallel (conflicts)
 - Make a subagent read the whole plan file (hand it its task brief —
@@ -402,6 +430,39 @@ Done!
 **If subagent fails task:**
 - Dispatch fix subagent with specific instructions
 - Don't try to fix manually (context pollution)
+
+## House Notes (this environment)
+
+This fork runs under both Claude Code and Pi. The notes below bind SDD to this
+machine's tooling and doctrine; drop them if you sync the fork somewhere
+without Codex or the verify-fixes workflow. Where a step names a tool, both
+harness paths are given — use the one for the harness you are running in.
+
+- **SDD is the sanctioned exception to "subagents = collectors."** House
+  doctrine (Claude Code: global CLAUDE.md + agent-dispatch skill; Pi: the
+  same doctrine in its config) says the main session writes code and
+  subagents only gather context. SDD deliberately inverts that — implementers
+  ARE subagents. Reach for it only at the top of the plan-vs-TDD gate: M+
+  churn, 6+ files, long horizon, or wide blast radius, with genuinely
+  independent tasks. Below that, honor the default (main writes, subagents
+  collect).
+- **Offload reviewers to Codex.** The task reviewer and the final
+  whole-branch reviewer are second-opinion review — exactly what house
+  doctrine routes to flat-rate Codex to spare scarce Claude quota. The diff
+  is already a file (`scripts/review-package`), so dispatch these reviews to
+  Codex instead of a Claude model — Claude Code via the `codex-rescue` agent
+  / `codex:rescue` skill; Pi via the `codex` CLI subprocess. Keep implementers
+  and fix subagents on Claude. A reviewer is read-only, but a fix routed
+  through Codex needs `--write`, and docker-socket test suites can never run
+  there — run those in the main shell.
+- **Independently verify the final fix wave.** Passing tests and lint do not
+  confirm a fix addressed its finding. After the final whole-branch review's
+  single fix subagent lands, run an independent re-verification pass over that
+  findings list — each fix checked for change-present, defect-gone, and
+  no-neighbor-regression — before superpowers:finishing-a-development-branch.
+  Use the `verify-fixes` workflow where it exists (Claude Code), or a
+  verifier subagent otherwise. The per-task re-review already closes this loop
+  on per-task fixes; this extends it to the final wave.
 
 ## Integration
 
